@@ -154,12 +154,57 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
     if not waves_uid_list and not pgr_uid_list:
         return WAVES_CODE_101_MSG
 
+    bbs_link_config = get_bbs_link_config()
+    main_uid = waves_uid_list[0] if waves_uid_list else None
+
+    # 先检查本地签到状态，判断是否所有签到都已完成
+    all_completed = True
+
+    # 检查鸣潮签到状态
+    if waves_enabled and waves_uid_list:
+        for waves_uid in waves_uid_list:
+            rover_sign = await RoverSign.get_sign_data(waves_uid)
+            if not rover_sign or not SignStatus.waves_game_sign_complete(rover_sign):
+                all_completed = False
+                break
+
+    # 检查战双签到状态
+    if all_completed and pgr_enabled and pgr_uid_list:
+        for pgr_uid in pgr_uid_list:
+            rover_sign = await RoverSign.get_sign_data(main_uid or pgr_uid)
+            if not rover_sign or not SignStatus.pgr_game_sign_complete(rover_sign):
+                all_completed = False
+                break
+
+    # 检查社区签到状态
+    if all_completed and bbs_enabled and main_uid:
+        rover_sign = await RoverSign.get_sign_data(main_uid)
+        if not rover_sign or not SignStatus.bbs_sign_complete(rover_sign, bbs_link_config):
+            all_completed = False
+
+    # 如果所有签到都已完成，直接返回跳过消息，不请求任何 API
+    if all_completed:
+        msg_list = []
+        if waves_enabled and waves_uid_list:
+            for waves_uid in waves_uid_list:
+                msg_list.append(f"[鸣潮] 特征码: {waves_uid}")
+                msg_list.append(f"签到状态: {SIGN_STATUS['skip']}")
+                msg_list.append("-----------------------------")
+
+        if pgr_enabled and pgr_uid_list:
+            for pgr_uid in pgr_uid_list:
+                msg_list.append(f"[战双] 特征码: {pgr_uid}")
+                msg_list.append(f"签到状态: {SIGN_STATUS['skip']}")
+                msg_list.append("-----------------------------")
+
+        if bbs_enabled and main_uid:
+            msg_list.append(f"社区签到状态: {SIGN_STATUS['skip']}")
+
+        return "\n".join(msg_list) if msg_list else WAVES_CODE_101_MSG
+
+    # 有未完成的签到，开始获取 token 并执行签到
     msg_list = []
     expire_uid = set()  # 使用 set 自动去重
-    bbs_link_config = get_bbs_link_config()
-
-    # 使用第一个鸣潮 UID 作为主 UID（用于社区签到和获取 cookie）
-    main_uid = waves_uid_list[0] if waves_uid_list else None
     main_token = None
 
     if main_uid:
