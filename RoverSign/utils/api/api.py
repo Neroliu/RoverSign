@@ -1,4 +1,5 @@
-GAME_ID = 3
+WAVES_GAME_ID = 3
+PGR_GAME_ID = 2
 SERVER_ID = "76402e5b20be2c39f095a152090afddc"
 SERVER_ID_NET = "919752ae5ea09c1ced910dd668a63ffb"
 
@@ -11,6 +12,9 @@ def get_main_url():
 
 
 MAIN_URL = get_main_url()
+
+# 角色列表
+FIND_ROLE_LIST_URL = f"{MAIN_URL}/user/role/findRoleList"
 
 # 刷新数据
 REFRESH_URL = f"{MAIN_URL}/aki/roleBox/akiBox/refreshData"

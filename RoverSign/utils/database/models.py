@@ -13,8 +13,20 @@ from gsuid_core.utils.database.base_models import (
     User,
     with_session,
 )
+from gsuid_core.utils.database.startup import exec_list
 
 from ..util import get_today_date
+
+# 添加数据库字段迁移
+exec_list.extend(
+    [
+        'ALTER TABLE WavesBind ADD COLUMN pgr_uid TEXT DEFAULT ""',
+        'ALTER TABLE WavesUser ADD COLUMN pgr_uid TEXT DEFAULT ""',
+        'ALTER TABLE WavesUser ADD COLUMN pgr_sign_switch TEXT DEFAULT "off"',
+        'ALTER TABLE RoverSign ADD COLUMN pgr_uid TEXT DEFAULT ""',
+        'ALTER TABLE RoverSign ADD COLUMN pgr_game_sign INTEGER DEFAULT 0',
+    ]
+)
 
 # 创建一个全局的数据库写锁
 _DB_WRITE_LOCK = asyncio.Lock()
@@ -37,16 +49,19 @@ T_RoverSign = TypeVar("T_RoverSign", bound="RoverSign")
 class WavesBind(Bind, table=True):
     __table_args__: Dict[str, Any] = {"extend_existing": True}
     uid: Optional[str] = Field(default=None, title="鸣潮UID")
+    pgr_uid: Optional[str] = Field(default=None, title="战双UID")
 
 
 class WavesUser(User, table=True):
     __table_args__: Dict[str, Any] = {"extend_existing": True}
     cookie: str = Field(default="", title="Cookie")
     uid: str = Field(default=None, title="鸣潮UID")
+    pgr_uid: Optional[str] = Field(default=None, title="战双UID")
     record_id: Optional[str] = Field(default=None, title="鸣潮记录ID")
     platform: str = Field(default="", title="ck平台")
     stamina_bg_value: str = Field(default="", title="体力背景")
     bbs_sign_switch: str = Field(default="off", title="自动社区签到")
+    pgr_sign_switch: str = Field(default="off", title="自动战双签到")
     bat: str = Field(default="", title="bat")
     did: str = Field(default="", title="did")
 
@@ -152,21 +167,27 @@ class WavesUser(User, table=True):
 
 class RoverSignData(BaseModel):
     uid: str  # 鸣潮UID
+    pgr_uid: Optional[str] = None  # 战双UID
     date: Optional[str] = None  # 签到日期
-    game_sign: Optional[int] = None  # 游戏签到
+    game_sign: Optional[int] = None  # 游戏签到（鸣潮）
+    pgr_game_sign: Optional[int] = None  # 游戏签到（战双）
     bbs_sign: Optional[int] = None  # 社区签到
     bbs_detail: Optional[int] = None  # 社区浏览
     bbs_like: Optional[int] = None  # 社区点赞
     bbs_share: Optional[int] = None  # 社区分享
 
     @classmethod
-    def build(cls, uid: str):
+    def build(cls, uid: str, pgr_uid: Optional[str] = None):
         date = get_today_date()
-        return cls(uid=uid, date=date)
+        return cls(uid=uid, pgr_uid=pgr_uid, date=date)
 
     @classmethod
     def build_game_sign(cls, uid: str):
         return cls(uid=uid, game_sign=1)
+
+    @classmethod
+    def build_pgr_game_sign(cls, uid: str, pgr_uid: str):
+        return cls(uid=uid, pgr_uid=pgr_uid, pgr_game_sign=1)
 
     @classmethod
     def build_bbs_sign(
@@ -185,7 +206,9 @@ class RoverSignData(BaseModel):
 class RoverSign(BaseIDModel, table=True):
     __table_args__: Dict[str, Any] = {"extend_existing": True}
     uid: str = Field(title="鸣潮UID")
-    game_sign: int = Field(default=0, title="游戏签到")
+    pgr_uid: Optional[str] = Field(default=None, title="战双UID")
+    game_sign: int = Field(default=0, title="游戏签到（鸣潮）")
+    pgr_game_sign: int = Field(default=0, title="游戏签到（战双）")
     bbs_sign: int = Field(default=0, title="社区签到")
     bbs_detail: int = Field(default=0, title="社区浏览")
     bbs_like: int = Field(default=0, title="社区点赞")
@@ -231,14 +254,18 @@ class RoverSign(BaseIDModel, table=True):
             # 更新已有记录
             for field in [
                 "game_sign",
+                "pgr_game_sign",
                 "bbs_sign",
                 "bbs_detail",
                 "bbs_like",
                 "bbs_share",
             ]:
                 value = getattr(rover_sign_data, field)
-                if value:
+                if value is not None:
                     setattr(record, field, value)
+            # 更新 pgr_uid
+            if rover_sign_data.pgr_uid:
+                record.pgr_uid = rover_sign_data.pgr_uid
             result = record
         else:
             # 添加新记录 - 直接从Pydantic模型创建SQLModel实例

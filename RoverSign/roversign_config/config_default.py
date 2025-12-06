@@ -14,6 +14,11 @@ CONFIG_DEFAULT: Dict[str, GSC] = {
         "用户鸣潮游戏签到开关",
         False,
     ),
+    "UserPGRSignin": GsBoolConfig(
+        "用户战双游戏签到开关",
+        "用户战双游戏签到开关",
+        False,
+    ),
     "UserBBSSchedSignin": GsBoolConfig(
         "用户库街区每日任务开关",
         "用户库街区每日任务开关",

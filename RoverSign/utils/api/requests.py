@@ -15,8 +15,10 @@ from aiohttp import (
 from gsuid_core.logger import logger
 
 from ..api.api import (
+    FIND_ROLE_LIST_URL,
     FORUM_LIST_URL,
-    GAME_ID,
+    PGR_GAME_ID,
+    WAVES_GAME_ID,
     GET_TASK_URL,
     LIKE_URL,
     LOGIN_LOG_URL,
@@ -131,7 +133,7 @@ class RoverRequest:
         used_headers = await self.get_used_headers(cookie=token, uid=roleId)
         header.update(used_headers)
         data = {
-            "gameId": GAME_ID,
+            "gameId": WAVES_GAME_ID,
             "serverId": self.get_server_id(roleId, serverId),
             "roleId": roleId,
         }
@@ -176,7 +178,7 @@ class RoverRequest:
         return False, ""
 
     async def get_daily_info(
-        self, roleId: str, token: str, gameId: Union[str, int] = GAME_ID
+        self, roleId: str, token: str, gameId: Union[str, int] = WAVES_GAME_ID
     ):
         """每日"""
         header = await get_base_header()
@@ -196,24 +198,8 @@ class RoverRequest:
             data=data,
         )
 
-    async def sign_in(self, roleId: str, token: str):
-        """游戏签到"""
-        header = await get_base_header()
-        used_headers = await self.get_used_headers(
-            cookie=token, uid=roleId, needToken=True
-        )
-        header.update(used_headers)
-        header.update({"devcode": ""})
-        data = {
-            "gameId": GAME_ID,
-            "serverId": SERVER_ID,
-            "roleId": roleId,
-            "reqMonth": f"{datetime.now().month:02}",
-        }
-        return await self._waves_request(SIGNIN_URL, "POST", header, data=data)
-
-    async def sign_in_task_list(
-        self, roleId: str, token: str, serverId: Optional[str] = None
+    async def sign_in(
+        self, roleId: str, token: str, gameId: int = WAVES_GAME_ID, serverId: Optional[str] = None
     ):
         """游戏签到"""
         header = await get_base_header()
@@ -223,12 +209,42 @@ class RoverRequest:
         header.update(used_headers)
         header.update({"devcode": ""})
         data = {
-            "gameId": GAME_ID,
-            "serverId": SERVER_ID,
+            "gameId": gameId,
+            "serverId": serverId or SERVER_ID,
+            "roleId": roleId,
+            "reqMonth": f"{datetime.now().month:02}",
+        }
+        return await self._waves_request(SIGNIN_URL, "POST", header, data=data)
+
+    async def sign_in_task_list(
+        self, roleId: str, token: str, gameId: int = WAVES_GAME_ID, serverId: Optional[str] = None
+    ):
+        """游戏签到任务列表"""
+        header = await get_base_header()
+        used_headers = await self.get_used_headers(
+            cookie=token, uid=roleId, needToken=True
+        )
+        header.update(used_headers)
+        header.update({"devcode": ""})
+        data = {
+            "gameId": gameId,
+            "serverId": serverId or SERVER_ID,
             "roleId": roleId,
         }
         return await self._waves_request(
             SIGNIN_TASK_LIST_URL, "POST", header, data=data
+        )
+
+    async def find_role_list(self, token: str, gameId: int):
+        """获取角色列表"""
+        header = await get_base_header()
+        used_headers = await self.get_used_headers(cookie=token, uid="", needToken=True)
+        header.update(used_headers)
+        data = {
+            "gameId": gameId,
+        }
+        return await self._waves_request(
+            FIND_ROLE_LIST_URL, "POST", header, data=data
         )
 
     async def get_task(self, token: str, roleId: str):

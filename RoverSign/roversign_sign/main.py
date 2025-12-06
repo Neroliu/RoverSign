@@ -405,11 +405,66 @@ async def single_daily_sign(
             group_msgs[gid]["success"] += 1
 
 
+async def single_pgr_daily_sign(
+    bot_id: str,
+    uid: str,
+    pgr_uid: str,
+    gid: str,
+    qid: str,
+    ck: str,
+    private_msgs: Dict,
+    group_msgs: Dict,
+    all_msgs: Dict,
+):
+    """战双游戏签到（用于自动签到任务）"""
+    im = await pgr_sign_in(uid, pgr_uid, ck)
+    if gid == "on":
+        if qid not in private_msgs:
+            private_msgs[qid] = []
+        private_msgs[qid].append(
+            {"bot_id": bot_id, "uid": pgr_uid, "msg": [MessageSegment.text(im)]}
+        )
+        if "失败" in im:
+            all_msgs["failed"] += 1
+        else:
+            all_msgs["success"] += 1
+    elif gid == "off":
+        if "失败" in im:
+            all_msgs["failed"] += 1
+        else:
+            all_msgs["success"] += 1
+    else:
+        # 向群消息推送列表添加这个群
+        if gid not in group_msgs:
+            group_msgs[gid] = {
+                "bot_id": bot_id,
+                "success": 0,
+                "failed": 0,
+                "push_message": [],
+            }
+        if "失败" in im:
+            all_msgs["failed"] += 1
+            group_msgs[gid]["failed"] += 1
+            group_msgs[gid]["push_message"].extend(
+                [
+                    MessageSegment.text("\n"),
+                    MessageSegment.at(qid),
+                    MessageSegment.text(f"[战双] {im}"),
+                ]
+            )
+        else:
+            all_msgs["success"] += 1
+            group_msgs[gid]["success"] += 1
+
+
 async def sign_in(uid: str, ck: str, isForce: bool = False) -> str:
+    """鸣潮游戏签到"""
+    from ..utils.api.api import WAVES_GAME_ID
+
     hasSignIn = False
     if not isForce:
         # 获取签到状态
-        res = await rover_api.sign_in_task_list(uid, ck)
+        res = await rover_api.sign_in_task_list(uid, ck, gameId=WAVES_GAME_ID)
         if res.success and res.data and isinstance(res.data, dict):
             hasSignIn = res.data.get("isSigIn", False)
 
@@ -419,7 +474,7 @@ async def sign_in(uid: str, ck: str, isForce: bool = False) -> str:
             logger.debug(f"UID{uid} 该用户今日已签到,跳过...")
             return "今日已签到！请勿重复签到！"
 
-    sign_in_res = await rover_api.sign_in(uid, ck)
+    sign_in_res = await rover_api.sign_in(uid, ck, gameId=WAVES_GAME_ID)
     if sign_in_res.success:
         # 签到成功
         await RoverSign.upsert_rover_sign(RoverSignData.build_game_sign(uid))
@@ -432,6 +487,79 @@ async def sign_in(uid: str, ck: str, isForce: bool = False) -> str:
 
     # 签到失败
     return "签到失败！"
+
+
+async def pgr_sign_in(uid: str, pgr_uid: str, ck: str, isForce: bool = False) -> str:
+    """战双游戏签到"""
+    from ..utils.api.api import PGR_GAME_ID
+
+    logger.debug(f"[pgr_sign_in] 开始执行 - uid: {uid}, pgr_uid: {pgr_uid}, isForce: {isForce}")
+
+    # 先获取角色列表，获取正确的 serverId
+    logger.debug(f"[pgr_sign_in] 调用 find_role_list - gameId: {PGR_GAME_ID}")
+    role_list_res = await rover_api.find_role_list(ck, PGR_GAME_ID)
+    logger.debug(f"[pgr_sign_in] find_role_list 返回 - success: {role_list_res.success}, code: {role_list_res.code}, msg: {role_list_res.msg}")
+
+    if not role_list_res.success:
+        logger.error(f"[战双签到] 获取角色列表失败: {role_list_res.msg}")
+        return f"签到失败：{role_list_res.msg}"
+
+    if not role_list_res.data or not isinstance(role_list_res.data, list):
+        logger.error(f"[战双签到] 角色列表为空 - data type: {type(role_list_res.data)}")
+        return "签到失败：未绑定战双账号"
+
+    logger.debug(f"[pgr_sign_in] 角色列表数量: {len(role_list_res.data)}")
+
+    # 查找匹配的角色
+    pgr_role = None
+    for role in role_list_res.data:
+        logger.debug(f"[pgr_sign_in] 检查角色 - roleId: {role.get('roleId')}, roleName: {role.get('roleName')}")
+        if str(role.get("roleId")) == str(pgr_uid):
+            pgr_role = role
+            break
+
+    if not pgr_role:
+        logger.error(f"[战双签到] 未找到匹配的角色 UID: {pgr_uid}, 可用角色: {[r.get('roleId') for r in role_list_res.data]}")
+        return "签到失败：未找到匹配的战双角色"
+
+    server_id = pgr_role.get("serverId")
+    logger.info(f"[战双签到] UID: {pgr_uid}, serverId: {server_id}, serverName: {pgr_role.get('serverName')}, roleName: {pgr_role.get('roleName')}")
+
+    hasSignIn = False
+    if not isForce:
+        # 获取签到状态
+        logger.debug(f"[pgr_sign_in] 调用 sign_in_task_list 检查签到状态 - pgr_uid: {pgr_uid}, gameId: {PGR_GAME_ID}, serverId: {server_id}")
+        res = await rover_api.sign_in_task_list(pgr_uid, ck, gameId=PGR_GAME_ID, serverId=server_id)
+        logger.debug(f"[pgr_sign_in] sign_in_task_list 返回 - success: {res.success}, code: {res.code}, msg: {res.msg}, data: {res.data}")
+
+        if res.success and res.data and isinstance(res.data, dict):
+            hasSignIn = res.data.get("isSigIn", False)
+            logger.debug(f"[pgr_sign_in] 已签到状态: {hasSignIn}")
+
+        if hasSignIn:
+            # 已经签到
+            await RoverSign.upsert_rover_sign(RoverSignData.build_pgr_game_sign(uid, pgr_uid))
+            logger.debug(f"PGR UID{pgr_uid} 该用户今日已签到,跳过...")
+            return "今日已签到！请勿重复签到！"
+
+    logger.debug(f"[pgr_sign_in] 调用 sign_in 执行签到 - pgr_uid: {pgr_uid}, gameId: {PGR_GAME_ID}, serverId: {server_id}")
+    sign_in_res = await rover_api.sign_in(pgr_uid, ck, gameId=PGR_GAME_ID, serverId=server_id)
+    logger.debug(f"[pgr_sign_in] sign_in 返回 - success: {sign_in_res.success}, code: {sign_in_res.code}, msg: {sign_in_res.msg}, data: {sign_in_res.data}")
+
+    if sign_in_res.success:
+        # 签到成功
+        await RoverSign.upsert_rover_sign(RoverSignData.build_pgr_game_sign(uid, pgr_uid))
+        logger.debug(f"[pgr_sign_in] 签到成功")
+        return "签到成功！"
+    elif sign_in_res.code == 1511:
+        # 已经签到
+        await RoverSign.upsert_rover_sign(RoverSignData.build_pgr_game_sign(uid, pgr_uid))
+        logger.debug(f"[pgr_sign_in] 今日已签到 (code 1511)")
+        return "今日已签到！请勿重复签到！"
+
+    # 签到失败
+    logger.error(f"[战双签到] 签到失败: code={sign_in_res.code}, msg={sign_in_res.msg}, data={sign_in_res.data}")
+    return f"签到失败：{sign_in_res.msg}"
 
 
 def create_gradient_background(width, height, start_color, end_color=(255, 255, 255)):
