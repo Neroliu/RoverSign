@@ -17,7 +17,6 @@ from gsuid_core.logger import logger
 from ..api.api import (
     FIND_ROLE_LIST_URL,
     FORUM_LIST_URL,
-    PGR_GAME_ID,
     WAVES_GAME_ID,
     GET_TASK_URL,
     LIKE_URL,
@@ -69,13 +68,18 @@ class RoverRequest:
                 # "user_id": waves_user.user_id,
                 # "bot_id": waves_user.bot_id,
                 "uid": waves_user.uid,
+                "game_id": waves_user.game_id,
             },
             update_data={"bat": access_token},
         )
         return waves_user
 
     async def get_used_headers(
-        self, cookie: str, uid: str, needToken: bool = False
+        self,
+        cookie: str,
+        uid: str,
+        needToken: bool = False,
+        game_id: Optional[int] = WAVES_GAME_ID,
     ) -> Dict[str, Any]:
         headers = {
             # "token": cookie,
@@ -87,6 +91,7 @@ class RoverRequest:
         waves_user: Optional[WavesUser] = await WavesUser.select_data_by_cookie_and_uid(
             cookie=cookie,
             uid=uid,
+            game_id=game_id,
         ) or await WavesUser.select_data_by_cookie(
             cookie=cookie,
         )
@@ -102,19 +107,19 @@ class RoverRequest:
         self, uid: str, user_id: str, bot_id: str
     ) -> Optional[str]:
         # 返回空串 表示绑定已失效
-        waves_user = await WavesUser.select_waves_user(uid, user_id, bot_id)
+        waves_user = await WavesUser.select_waves_user(uid, user_id, bot_id, game_id=WAVES_GAME_ID)
         if not waves_user or not waves_user.cookie:
             return ""
 
         if waves_user.status == "无效":
             return ""
 
-        data = await self.login_log(uid, waves_user.cookie)
+        data = await self.login_log(uid, waves_user.cookie, game_id=WAVES_GAME_ID)
         if not data.success:
             await data.mark_cookie_invalid(uid, waves_user.cookie)
             return ""
 
-        data = await self.refresh_data(uid, waves_user.cookie)
+        data = await self.refresh_data(uid, waves_user.cookie, game_id=WAVES_GAME_ID)
         if not data.success:
             if data.is_bat_token_invalid:
                 if waves_user := await self.refresh_bat_token(waves_user):
@@ -126,23 +131,27 @@ class RoverRequest:
         return waves_user.cookie
 
     async def refresh_data(
-        self, roleId: str, token: str, serverId: Optional[str] = None
+        self,
+        roleId: str,
+        token: str,
+        serverId: Optional[str] = None,
+        game_id: int = WAVES_GAME_ID,
     ):
         """刷新数据"""
         header = await get_base_header()
-        used_headers = await self.get_used_headers(cookie=token, uid=roleId)
+        used_headers = await self.get_used_headers(cookie=token, uid=roleId, game_id=game_id)
         header.update(used_headers)
         data = {
-            "gameId": WAVES_GAME_ID,
+            "gameId": game_id,
             "serverId": self.get_server_id(roleId, serverId),
             "roleId": roleId,
         }
         return await self._waves_request(REFRESH_URL, "POST", header, data=data)
 
-    async def login_log(self, roleId: str, token: str):
+    async def login_log(self, roleId: str, token: str, game_id: int = WAVES_GAME_ID):
         """登录校验"""
         header = await get_base_header()
-        used_headers = await self.get_used_headers(cookie=token, uid=roleId)
+        used_headers = await self.get_used_headers(cookie=token, uid=roleId, game_id=game_id)
         header.update(
             {
                 "token": token,
@@ -182,7 +191,7 @@ class RoverRequest:
     ):
         """每日"""
         header = await get_base_header()
-        used_headers = await self.get_used_headers(cookie=token, uid=roleId)
+        used_headers = await self.get_used_headers(cookie=token, uid=roleId, game_id=gameId)
         header.update(used_headers)
         data = {
             "type": "1",
@@ -204,7 +213,7 @@ class RoverRequest:
         """游戏签到"""
         header = await get_base_header()
         used_headers = await self.get_used_headers(
-            cookie=token, uid=roleId, needToken=True
+            cookie=token, uid=roleId, needToken=True, game_id=gameId
         )
         header.update(used_headers)
         header.update({"devcode": ""})
@@ -222,7 +231,7 @@ class RoverRequest:
         """游戏签到任务列表"""
         header = await get_base_header()
         used_headers = await self.get_used_headers(
-            cookie=token, uid=roleId, needToken=True
+            cookie=token, uid=roleId, needToken=True, game_id=gameId
         )
         header.update(used_headers)
         header.update({"devcode": ""})
@@ -238,7 +247,7 @@ class RoverRequest:
     async def find_role_list(self, token: str, gameId: int):
         """获取角色列表"""
         header = await get_base_header()
-        used_headers = await self.get_used_headers(cookie=token, uid="", needToken=True)
+        used_headers = await self.get_used_headers(cookie=token, uid="", needToken=True, game_id=gameId)
         header.update(used_headers)
         data = {
             "gameId": gameId,

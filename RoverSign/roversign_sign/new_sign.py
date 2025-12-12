@@ -1,6 +1,6 @@
 import asyncio
 import random
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional
 
 from gsuid_core.bot import Bot
 from gsuid_core.logger import logger
@@ -19,6 +19,7 @@ from ..utils.database.models import (
 )
 from ..utils.database.states import SignStatus
 from ..utils.errors import WAVES_CODE_101_MSG
+from ..utils.api.api import WAVES_GAME_ID
 from ..utils.rover_api import rover_api
 from .main import (
     create_sign_info_image,
@@ -355,7 +356,9 @@ async def rover_auto_sign_task():
             if user.status:
                 return
 
-            login_res = await rover_api.login_log(user.uid, user.cookie)
+            user_game_id = user.game_id or WAVES_GAME_ID
+
+            login_res = await rover_api.login_log(user.uid, user.cookie, game_id=user_game_id)
             if not login_res.success:
                 if login_res.is_bat_token_invalid:
                     if waves_user := await rover_api.refresh_bat_token(user):
@@ -364,7 +367,7 @@ async def rover_auto_sign_task():
                     await login_res.mark_cookie_invalid(user.uid, user.cookie)
                 return
 
-            refresh_res = await rover_api.refresh_data(user.uid, user.cookie)
+            refresh_res = await rover_api.refresh_data(user.uid, user.cookie, game_id=user_game_id)
             if not refresh_res.success:
                 if refresh_res.is_bat_token_invalid:
                     if waves_user := await rover_api.refresh_bat_token(user):

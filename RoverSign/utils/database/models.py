@@ -24,6 +24,10 @@ exec_list.extend(
         'ALTER TABLE WavesUser ADD COLUMN pgr_uid TEXT DEFAULT ""',
         'ALTER TABLE RoverSign ADD COLUMN pgr_uid TEXT DEFAULT ""',
         'ALTER TABLE RoverSign ADD COLUMN pgr_game_sign INTEGER DEFAULT 0',
+        'ALTER TABLE WavesUser ADD COLUMN game_id INTEGER DEFAULT 3',
+        "UPDATE WavesUser SET uid = COALESCE(NULLIF(uid, ''), pgr_uid) WHERE IFNULL(uid, '') = '' AND IFNULL(pgr_uid, '') != ''",
+        "UPDATE WavesUser SET game_id = 2 WHERE IFNULL(pgr_uid, '') != ''",
+        "UPDATE WavesUser SET game_id = CASE WHEN IFNULL(game_id, 0) = 0 THEN 3 ELSE game_id END WHERE IFNULL(pgr_uid, '') = ''",
     ]
 )
 
@@ -55,13 +59,13 @@ class WavesUser(User, table=True):
     __table_args__: Dict[str, Any] = {"extend_existing": True}
     cookie: str = Field(default="", title="Cookie")
     uid: str = Field(default=None, title="鸣潮UID")
-    pgr_uid: Optional[str] = Field(default=None, title="战双UID")
-    record_id: Optional[str] = Field(default=None, title="鸣潮记录ID")
+    record_id: Optional[str] = Field(default=None, title="记录ID")
     platform: str = Field(default="", title="ck平台")
     stamina_bg_value: str = Field(default="", title="体力背景")
     bbs_sign_switch: str = Field(default="off", title="自动社区签到")
     bat: str = Field(default="", title="bat")
     did: str = Field(default="", title="did")
+    game_id: int = Field(default=3, title="GameID")
 
     @classmethod
     @with_lock
@@ -104,15 +108,19 @@ class WavesUser(User, table=True):
         uid: str,
         user_id: str,
         bot_id: str,
+        game_id: Optional[int] = None,
     ) -> Optional[T_WavesUser]:
         """
         根据user_id、uid、bot_id查询数据
         """
-        sql = select(cls).where(
+        filters = [
             cls.user_id == user_id,
             cls.uid == uid,
             cls.bot_id == bot_id,
-        )
+        ]
+        if game_id is not None:
+            filters.append(cls.game_id == game_id)
+        sql = select(cls).where(*filters)
         result = await session.execute(sql)
         data = result.scalars().all()
         return data[0] if data else None
@@ -155,9 +163,16 @@ class WavesUser(User, table=True):
     @classmethod
     @with_session
     async def select_data_by_cookie_and_uid(
-        cls: Type[T_WavesUser], session: AsyncSession, cookie: str, uid: str
+        cls: Type[T_WavesUser],
+        session: AsyncSession,
+        cookie: str,
+        uid: str,
+        game_id: Optional[int] = None,
     ) -> Optional[T_WavesUser]:
-        sql = select(cls).where(cls.cookie == cookie, cls.uid == uid)
+        filters = [cls.cookie == cookie, cls.uid == uid]
+        if game_id is not None:
+            filters.append(cls.game_id == game_id)
+        sql = select(cls).where(*filters)
         result = await session.execute(sql)
         data = result.scalars().all()
         return data[0] if data else None
