@@ -20,14 +20,8 @@ from ..util import get_today_date
 # 添加数据库字段迁移
 exec_list.extend(
     [
-        'ALTER TABLE WavesBind ADD COLUMN pgr_uid TEXT DEFAULT ""',
-        'ALTER TABLE WavesUser ADD COLUMN pgr_uid TEXT DEFAULT ""',
         'ALTER TABLE RoverSign ADD COLUMN pgr_uid TEXT DEFAULT ""',
         'ALTER TABLE RoverSign ADD COLUMN pgr_game_sign INTEGER DEFAULT 0',
-        'ALTER TABLE WavesUser ADD COLUMN game_id INTEGER DEFAULT 3',
-        "UPDATE WavesUser SET uid = COALESCE(NULLIF(uid, ''), pgr_uid) WHERE IFNULL(uid, '') = '' AND IFNULL(pgr_uid, '') != ''",
-        "UPDATE WavesUser SET game_id = 2 WHERE IFNULL(pgr_uid, '') != ''",
-        "UPDATE WavesUser SET game_id = CASE WHEN IFNULL(game_id, 0) = 0 THEN 3 ELSE game_id END WHERE IFNULL(pgr_uid, '') = ''",
     ]
 )
 
