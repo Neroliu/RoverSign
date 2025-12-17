@@ -503,15 +503,16 @@ async def pgr_sign_in(
     logger.debug(f"[pgr_sign_in] find_role_list 返回 - success: {role_list_res.success}, code: {role_list_res.code}, msg: {role_list_res.msg}")
 
     if not role_list_res.success:
-        logger.error(f"[战双签到] 获取角色列表失败: {role_list_res.msg}")
-        return f"签到失败：{role_list_res.msg}"
+        logger.debug(f"[战双签到] 获取角色列表失败: {role_list_res.msg}")
+        return None
 
     role_list_data = role_list_res.data
     if role_list_data is None or (isinstance(role_list_data, list) and not role_list_data):
+        logger.debug(f"[战双签到] 角色列表为空")
         return None
     if not isinstance(role_list_data, list):
-        logger.error(f"[战双签到] 角色列表数据异常 - data type: {type(role_list_data)}")
-        return "签到失败：角色列表数据异常"
+        logger.debug(f"[战双签到] 角色列表数据异常 - data type: {type(role_list_data)}")
+        return None
 
     logger.debug(f"[pgr_sign_in] 角色列表数量: {len(role_list_data)}")
 
