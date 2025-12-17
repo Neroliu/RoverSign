@@ -418,6 +418,8 @@ async def single_pgr_daily_sign(
 ):
     """战双游戏签到（用于自动签到任务）"""
     im = await pgr_sign_in(uid, pgr_uid, ck)
+    if im is None:
+        return
     if gid == "on":
         if qid not in private_msgs:
             private_msgs[qid] = []
@@ -489,7 +491,9 @@ async def sign_in(uid: str, ck: str, isForce: bool = False) -> str:
     return "签到失败！"
 
 
-async def pgr_sign_in(uid: str, pgr_uid: str, ck: str, isForce: bool = False) -> str:
+async def pgr_sign_in(
+    uid: str, pgr_uid: str, ck: str, isForce: bool = False
+) -> Optional[str]:
     """战双游戏签到"""
     from ..utils.api.api import PGR_GAME_ID
 
@@ -502,23 +506,28 @@ async def pgr_sign_in(uid: str, pgr_uid: str, ck: str, isForce: bool = False) ->
         logger.error(f"[战双签到] 获取角色列表失败: {role_list_res.msg}")
         return f"签到失败：{role_list_res.msg}"
 
-    if not role_list_res.data or not isinstance(role_list_res.data, list):
-        logger.error(f"[战双签到] 角色列表为空 - data type: {type(role_list_res.data)}")
-        return "签到失败：未绑定战双账号"
+    role_list_data = role_list_res.data
+    if role_list_data is None or (isinstance(role_list_data, list) and not role_list_data):
+        return None
+    if not isinstance(role_list_data, list):
+        logger.error(f"[战双签到] 角色列表数据异常 - data type: {type(role_list_data)}")
+        return "签到失败：角色列表数据异常"
 
-    logger.debug(f"[pgr_sign_in] 角色列表数量: {len(role_list_res.data)}")
+    logger.debug(f"[pgr_sign_in] 角色列表数量: {len(role_list_data)}")
 
     # 查找匹配的角色
     pgr_role = None
-    for role in role_list_res.data:
+    for role in role_list_data:
         logger.debug(f"[pgr_sign_in] 检查角色 - roleId: {role.get('roleId')}, roleName: {role.get('roleName')}")
         if str(role.get("roleId")) == str(pgr_uid):
             pgr_role = role
             break
 
     if not pgr_role:
-        logger.error(f"[战双签到] 未找到匹配的角色 UID: {pgr_uid}, 可用角色: {[r.get('roleId') for r in role_list_res.data]}")
-        return "签到失败：未找到匹配的战双角色"
+        logger.debug(
+            f"[战双签到] 未找到匹配的角色 UID: {pgr_uid}, 可用角色: {[r.get('roleId') for r in role_list_data]}"
+        )
+        return None
 
     server_id = pgr_role.get("serverId")
     logger.info(f"[战双签到] UID: {pgr_uid}, serverId: {server_id}, serverName: {pgr_role.get('serverName')}, roleName: {pgr_role.get('roleName')}")

@@ -102,11 +102,12 @@ async def action_pgr_sign_in(uid: str, pgr_uid: str, token: str):
     # 不在这里检查签到状态（会因为 serverId 不正确而返回 1513 错误）
     res = await pgr_sign_in(uid, pgr_uid, token, isForce=False)
 
+    if res is None:
+        return "skip"
+
     if "成功" in res or "已签到" in res:
         signed = True
         logger.info(f"[战双签到] {pgr_uid} 签到完成")
-    else:
-        logger.warning(f"签到失败: {res}")
 
     return signed
 
