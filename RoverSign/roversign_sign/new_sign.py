@@ -91,7 +91,7 @@ async def action_waves_sign_in(uid: str, token: str):
     return signed
 
 
-async def action_pgr_sign_in(uid: str, pgr_uid: str, token: str):
+async def action_pgr_sign_in(uid: str, token: str):
     """战双游戏签到"""
 
     signed = False
@@ -100,14 +100,14 @@ async def action_pgr_sign_in(uid: str, pgr_uid: str, token: str):
 
     # 战双签到需要先获取正确的 serverId，所以直接调用 pgr_sign_in
     # 不在这里检查签到状态（会因为 serverId 不正确而返回 1513 错误）
-    res = await pgr_sign_in(uid, pgr_uid, token, isForce=False)
+    res = await pgr_sign_in(uid, token, isForce=False)
 
     if res is None:
         return "skip"
 
     if "成功" in res or "已签到" in res:
         signed = True
-        logger.info(f"[战双签到] {pgr_uid} 签到完成")
+        logger.info(f"[战双签到] {uid} 签到完成")
 
     return signed
 
@@ -246,7 +246,7 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
             if rover_sign and SignStatus.pgr_game_sign_complete(rover_sign):
                 pgr_signed = "skip"
             else:
-                pgr_signed = await action_pgr_sign_in(main_uid or pgr_uid, pgr_uid, main_token)
+                pgr_signed = await action_pgr_sign_in(pgr_uid, main_token)
 
             msg_list.append(f"[战双] 特征码: {pgr_uid}")
             msg_list.append(f"签到状态: {sign_status[pgr_signed]}")
@@ -392,28 +392,44 @@ async def rover_auto_sign_task():
                     all_waves_sign_msgs,
                 )
 
-                await asyncio.sleep(random.randint(1, 2))
+                await asyncio.sleep(random.random() * 2)
+                
+            if (
+                RoverSignConfig.get_config("SchedSignin").data and user.uid in pgr_sign_user
+            ) or RoverSignConfig.get_config("SigninMaster").data:
+                await single_pgr_daily_sign(
+                    user.bot_id,
+                    user.uid,
+                    user.sign_switch,
+                    user.user_id,
+                    user.cookie,
+                    private_pgr_sign_msgs,
+                    group_pgr_sign_msgs,
+                    all_pgr_sign_msgs,
+                )
 
-            if user.uid in pgr_sign_user:
-                bind_data = await WavesBind.select_data(user.user_id, user.bot_id)
-                user_pgr_uid_list = []
-                if bind_data and bind_data.pgr_uid:
-                    user_pgr_uid_list = [u for u in bind_data.pgr_uid.split("_") if u]
+                await asyncio.sleep(random.random() * 2)
+                
+            # if user.uid in pgr_sign_user:
+            #     bind_data = await WavesBind.select_data(user.user_id, user.bot_id)
+            #     user_pgr_uid_list = []
+            #     if bind_data and bind_data.pgr_uid:
+            #         user_pgr_uid_list = [u for u in bind_data.pgr_uid.split("_") if u]
 
-                for pgr_uid in user_pgr_uid_list:
-                    if RoverSignConfig.get_config("UserPGRSignin").data or RoverSignConfig.get_config("SigninMaster").data:
-                        await single_pgr_daily_sign(
-                            user.bot_id,
-                            user.uid,
-                            pgr_uid,
-                            user.sign_switch,
-                            user.user_id,
-                            user.cookie,
-                            private_pgr_sign_msgs,
-                            group_pgr_sign_msgs,
-                            all_pgr_sign_msgs,
-                        )
-                        await asyncio.sleep(random.randint(1, 2))
+            #     for pgr_uid in user_pgr_uid_list:
+            #         if RoverSignConfig.get_config("UserPGRSignin").data or RoverSignConfig.get_config("SigninMaster").data:
+            #             await single_pgr_daily_sign(
+            #                 user.bot_id,
+            #                 user.uid,
+            #                 pgr_uid,
+            #                 user.sign_switch,
+            #                 user.user_id,
+            #                 user.cookie,
+            #                 private_pgr_sign_msgs,
+            #                 group_pgr_sign_msgs,
+            #                 all_pgr_sign_msgs,
+            #             )
+            #             await asyncio.sleep(random.randint(1, 2))
 
             # 社区签到
             if (

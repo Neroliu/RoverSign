@@ -193,8 +193,8 @@ class RoverSignData(BaseModel):
         return cls(uid=uid, game_sign=1)
 
     @classmethod
-    def build_pgr_game_sign(cls, uid: str, pgr_uid: str):
-        return cls(uid=uid, pgr_uid=pgr_uid, pgr_game_sign=1)
+    def build_pgr_game_sign(cls, uid: str):
+        return cls(uid=uid, pgr_game_sign=1)
 
     @classmethod
     def build_bbs_sign(
