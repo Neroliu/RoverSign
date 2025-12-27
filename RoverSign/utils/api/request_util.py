@@ -35,6 +35,7 @@ async def get_base_header(devCode: Optional[str] = None):
         "source": platform_source,
         "Content-Type": CONTENT_TYPE,
         "User-Agent": user_agent,
+        "version": KURO_VERSION,  # getPostDetail 需要版本号
     }
     if devCode:
         header["devCode"] = devCode
