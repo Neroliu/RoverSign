@@ -306,7 +306,13 @@ async def rover_auto_sign_task():
                 if SignStatus.bbs_sign_complete(rover_sign, bbs_link_config):
                     is_signed_bbs = True
 
-            if is_signed_waves_game and is_signed_pgr_game and is_signed_bbs:
+            if user.game_id == WAVES_GAME_ID:
+                if is_signed_waves_game and is_signed_bbs:
+                    continue
+            elif user.game_id == PGR_GAME_ID:
+                if is_signed_pgr_game and is_signed_bbs:
+                    continue
+            elif is_signed_bbs:
                 continue
 
             if RoverSignConfig.get_config("SigninMaster").data:
