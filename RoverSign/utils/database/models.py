@@ -22,6 +22,7 @@ exec_list.extend(
     [
         'ALTER TABLE RoverSign ADD COLUMN pgr_uid TEXT DEFAULT ""',
         'ALTER TABLE RoverSign ADD COLUMN pgr_game_sign INTEGER DEFAULT 0',
+        'ALTER TABLE WavesUser ADD COLUMN is_login INTEGER DEFAULT 0 NOT NULL',
     ]
 )
 
@@ -60,6 +61,7 @@ class WavesUser(User, table=True):
     bat: str = Field(default="", title="bat")
     did: str = Field(default="", title="did")
     game_id: int = Field(default=3, title="GameID")
+    is_login: bool = Field(default=False, title="是否waves登录")
 
     @classmethod
     @with_lock
