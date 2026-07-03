@@ -9,6 +9,8 @@ from gsuid_core.utils.database.models import Subscribe
 
 from ..utils.constant import BoardcastType
 from ..utils.database.rover_subscribe import RoverSubscribe
+from ..utils.database.rover_group_activity import RoverGroupActivity
+from ..roversign_config.roversign_config import RoverSignConfig
 
 
 def _resolve_group_target_ids(group_msg) -> tuple[str, str]:
@@ -67,6 +69,17 @@ async def send_board_cast_msg(
             logger.exception(f"[库洛签到·推送] {qid} 私聊推送失败!错误信息", e)
         await asyncio.sleep(0.5 + random.randint(1, 3))
     logger.info(f"[库洛签到·推送] {board_cast_type} 私聊推送完成!")
+
+    active_days = RoverSignConfig.get_config("ActiveUserDays").data
+    if active_days and group_msg_list:
+        try:
+            active_gids = await RoverGroupActivity.get_active_group_ids(active_days)
+            skipped = [g for g in group_msg_list if g not in active_gids]
+            if skipped:
+                logger.info(f"[库洛签到·推送] 跳过 {len(skipped)} 个不活跃群")
+                group_msg_list = {g: v for g, v in group_msg_list.items() if g in active_gids}
+        except Exception as e:
+            logger.warning(f"[库洛签到·推送] 活跃群过滤失败, 不过滤: {e}")
 
     # 执行群聊推送
     for gid in group_msg_list:

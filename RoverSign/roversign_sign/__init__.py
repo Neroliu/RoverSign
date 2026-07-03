@@ -55,6 +55,7 @@ async def rover_auto_sign():
         if subscribes:
             logger.info(f"[库洛签到·签到] 推送主人签到结果: {msg}")
             from ..utils.database.rover_subscribe import RoverSubscribe
+            from ..utils.database.rover_group_activity import PUSH_GUARD
             for sub in subscribes:
                 # 对 group 订阅，用 RoverSubscribe 获取最新 bot_self_id
                 if sub.user_type == "group" and sub.group_id:
@@ -65,7 +66,11 @@ async def rover_auto_sign():
                             f"{sub.bot_self_id} -> {latest_bot}"
                         )
                         sub.bot_self_id = latest_bot
-                await sub.send(msg)
+                token = PUSH_GUARD.set(True)
+                try:
+                    await sub.send(msg)
+                finally:
+                    PUSH_GUARD.reset(token)
     finally:
         # 签到完成，清除状态文件
         signing_state.clear_state()

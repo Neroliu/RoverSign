@@ -15,26 +15,37 @@ try:
         install_bot_hooks,
         register_target_send_hook,
         register_user_activity_hook,
+        register_group_activity_hook,
     )
-    from .utils.database.models import RoverSubscribe, RoverUserActivity
+    from .utils.database.models import RoverSubscribe, RoverUserActivity, RoverGroupActivity
+    from .utils.database.rover_group_activity import PUSH_GUARD
     from .utils.plugin_checker import is_from_rover_plugin
 
     logger.info("[库洛签到·插件] bot_send_hook 导入成功")
 
     # ===== 活跃度批量写入缓冲 =====
     _activity_buffer: dict[str, tuple[str, str, str]] = {}
+    _group_activity_buffer: dict[str, tuple[str, str, str]] = {}
     _FLUSH_INTERVAL = 60
 
     async def _flush_activity_buffer():
-        if not _activity_buffer:
-            return
-        pending = dict(_activity_buffer)
-        _activity_buffer.clear()
-        for key, (user_id, bot_id, bot_self_id) in pending.items():
-            try:
-                await RoverUserActivity.update_user_activity(user_id, bot_id, bot_self_id)
-            except Exception as e:
-                logger.warning(f"[库洛签到·插件] 批量活跃度写入失败: {e}")
+        if _activity_buffer:
+            pending = dict(_activity_buffer)
+            _activity_buffer.clear()
+            for key, (user_id, bot_id, bot_self_id) in pending.items():
+                try:
+                    await RoverUserActivity.update_user_activity(user_id, bot_id, bot_self_id)
+                except Exception as e:
+                    logger.warning(f"[库洛签到·插件] 批量活跃度写入失败: {e}")
+
+        if _group_activity_buffer:
+            group_pending = dict(_group_activity_buffer)
+            _group_activity_buffer.clear()
+            for key, (group_id, bot_id, bot_self_id) in group_pending.items():
+                try:
+                    await RoverGroupActivity.update_group_activity(group_id, bot_id, bot_self_id)
+                except Exception as e:
+                    logger.warning(f"[库洛签到·插件] 批量群活跃度写入失败: {e}")
 
     _shutdown_event = asyncio.Event()
 
@@ -76,17 +87,30 @@ try:
 
     async def rover_user_activity_hook(user_id: str, bot_id: str, bot_self_id: str):
         """RoverSign 的用户活跃度 hook - 写入缓冲区，定时批量刷写"""
+        if PUSH_GUARD.get():
+            return
         if not is_from_rover_plugin():
             return
         if not user_id:
             return
         _activity_buffer[f"{user_id}:{bot_id}:{bot_self_id}"] = (user_id, bot_id, bot_self_id)
 
+    async def rover_group_activity_hook(group_id: str, bot_id: str, bot_self_id: str):
+        """RoverSign 的群活跃度 hook - 写入缓冲区，定时批量刷写"""
+        if PUSH_GUARD.get():
+            return
+        if not is_from_rover_plugin():
+            return
+        if not group_id:
+            return
+        _group_activity_buffer[f"{group_id}:{bot_id}:{bot_self_id}"] = (group_id, bot_id, bot_self_id)
+
     # 安装 hooks 并注册
     logger.info("[库洛签到·插件] 开始安装和注册 hooks...")
     install_bot_hooks()
     register_target_send_hook(rover_bot_check_hook)
     register_user_activity_hook(rover_user_activity_hook)
+    register_group_activity_hook(rover_group_activity_hook)
     logger.info("[库洛签到·插件] Hooks 安装和注册完成")
 
 except ImportError as e:

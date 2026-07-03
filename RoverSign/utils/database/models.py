@@ -16,6 +16,7 @@ from gsuid_core.utils.database.base_models import (
 from ..util import get_today_date
 from ._lock import with_lock
 from .rover_user_activity import RoverUserActivity
+from .rover_group_activity import RoverGroupActivity
 from .rover_subscribe import RoverSubscribe
 
 exec_list.extend(
