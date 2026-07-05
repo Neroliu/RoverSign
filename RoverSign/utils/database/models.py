@@ -19,6 +19,9 @@ from .rover_user_activity import RoverUserActivity
 from .rover_group_activity import RoverGroupActivity
 from .rover_subscribe import RoverSubscribe
 
+from gsuid_core.server import on_core_start
+from .auto_migrate import auto_add_missing_columns
+
 exec_list.extend(
     [
         'ALTER TABLE RoverSign ADD COLUMN pgr_uid TEXT DEFAULT ""',
@@ -423,3 +426,8 @@ class RoverUserActivityAdmin(GsAdminModel):
     )  # type: ignore
 
     model = RoverUserActivity
+
+
+@on_core_start
+async def _roversign_auto_migrate():
+    await auto_add_missing_columns(__name__, log_prefix="[库洛签到·补列]")
