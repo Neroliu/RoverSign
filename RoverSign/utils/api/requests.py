@@ -110,23 +110,23 @@ class RoverRequest:
         headers["b-at"] = waves_user.bat or ""
         return headers
 
-    async def get_self_waves_ck(
-        self, uid: str, user_id: str, bot_id: str
+    async def get_self_ck(
+        self, uid: str, user_id: str, bot_id: str, game_id: int = WAVES_GAME_ID
     ) -> Optional[str]:
         # 返回空串 表示绑定已失效
-        waves_user = await WavesUser.select_waves_user(uid, user_id, bot_id, game_id=WAVES_GAME_ID)
+        waves_user = await WavesUser.select_waves_user(uid, user_id, bot_id, game_id=game_id)
         if not waves_user or not waves_user.cookie:
             return ""
 
         if waves_user.status == "无效":
             return ""
 
-        data = await self.login_log(uid, waves_user.cookie, game_id=WAVES_GAME_ID)
+        data = await self.login_log(uid, waves_user.cookie, game_id=game_id)
         if not data.success:
             await data.mark_cookie_invalid(uid, waves_user.cookie)
             return ""
 
-        data = await self.refresh_data(uid, waves_user.cookie, game_id=WAVES_GAME_ID)
+        data = await self.refresh_data(uid, waves_user.cookie, game_id=game_id)
         if not data.success:
             if data.is_bat_token_invalid:
                 if waves_user := await self.refresh_bat_token(waves_user):
@@ -136,6 +136,11 @@ class RoverRequest:
             return ""
 
         return waves_user.cookie
+
+    async def get_self_waves_ck(
+        self, uid: str, user_id: str, bot_id: str
+    ) -> Optional[str]:
+        return await self.get_self_ck(uid, user_id, bot_id, game_id=WAVES_GAME_ID)
 
     async def refresh_data(
         self,

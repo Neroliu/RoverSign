@@ -209,7 +209,9 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
         return hide_uid(uid, user_pref=pgr_user_prefs.get(uid, ""))
 
     bbs_link_config = get_bbs_link_config()
-    main_uid = waves_uid_list[0] if waves_uid_list else None
+    # 社区签到锚点 uid（账号级，任一有效 token 均可）：鸣潮优先，纯战双用户回落到战双 uid
+    main_uid = waves_uid_list[0] if waves_uid_list else (pgr_uid_list[0] if pgr_uid_list else None)
+    main_game_id = WAVES_GAME_ID if waves_uid_list else PGR_GAME_ID
 
     # 先检查本地签到状态，判断是否所有签到都已完成
     all_completed = True
@@ -270,7 +272,7 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
     sign_status = get_sign_status()
 
     if main_uid:
-        main_token = await rover_api.get_self_waves_ck(main_uid, ev.user_id, ev.bot_id)
+        main_token = await rover_api.get_self_ck(main_uid, ev.user_id, ev.bot_id, game_id=main_game_id)
         if not main_token:
             expire_uid.add(main_uid)
 
@@ -295,15 +297,22 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
 
             await asyncio.sleep(random.randint(1, 2))
 
-    # 战双签到
-    if pgr_enabled and pgr_uid_list and main_token:
+    # 战双签到（用战双账号自己的 token，纯战双用户也能签）
+    if pgr_enabled and pgr_uid_list:
         for pgr_uid in pgr_uid_list:
+            token = main_token if pgr_uid == main_uid else await rover_api.get_self_ck(
+                pgr_uid, ev.user_id, ev.bot_id, game_id=PGR_GAME_ID
+            )
+            if not token:
+                expire_uid.add(pgr_uid)
+                continue
+
             pgr_signed = False
             rover_sign: Optional[RoverSign] = await RoverSign.get_sign_data(pgr_uid)
             if rover_sign and SignStatus.pgr_game_sign_complete(rover_sign):
                 pgr_signed = "skip"
             else:
-                pgr_signed = await action_pgr_sign_in(pgr_uid, main_token)
+                pgr_signed = await action_pgr_sign_in(pgr_uid, token)
 
             msg_list.append(f"[战双] 特征码: {mask_pgr_uid(pgr_uid)}")
             msg_list.append(f"签到状态: {sign_status[pgr_signed]}")
