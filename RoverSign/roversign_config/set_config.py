@@ -50,15 +50,15 @@ async def set_config_func(ev: Event, uid: str = "0"):
             },
         )
 
-        if ev.bot_id == "onebot":
-            if option == "off":
-                await gs_subscribe.delete_subscribe(
-                    "single", BoardcastTypeEnum.SIGN_WAVES, ev
-                )
-            else:
-                await gs_subscribe.add_subscribe(
-                    "single", BoardcastTypeEnum.SIGN_WAVES, ev
-                )
+        # 推送去向按订阅记录：开启建订阅(群/私聊由 user_type 决定)，关闭退订
+        if option == "off":
+            await gs_subscribe.delete_subscribe(
+                "single", BoardcastTypeEnum.SIGN_WAVES, ev
+            )
+        else:
+            await gs_subscribe.add_subscribe(
+                "single", BoardcastTypeEnum.SIGN_WAVES, ev
+            )
 
         if option != "off":
             from .roversign_config import RoverSignConfig
@@ -105,7 +105,7 @@ async def set_pgr_config_func(ev: Event, pgr_uid: str = "0"):
     )
 
     # 签到结果推送是按用户订阅的, 关闭单个游戏时不退订(可能鸣潮仍开着)
-    if ev.bot_id == "onebot" and option != "off":
+    if option != "off":
         await gs_subscribe.add_subscribe("single", BoardcastTypeEnum.SIGN_WAVES, ev)
 
     act = "开启" if option != "off" else "关闭"

@@ -285,6 +285,25 @@ async def do_single_task(uid, token) -> Union[bool, Dict[str, bool]]:
     return form_result
 
 
+def _ensure_group_entry(
+    group_msgs: Dict,
+    gid: str,
+    bot_id: str,
+    report_bot_self_id: Optional[str] = None,
+):
+    """按需创建群推送条目，并写入订阅记录里的 bot_self_id（推送去向以订阅为准）。"""
+    if gid not in group_msgs:
+        group_msgs[gid] = {
+            "bot_id": bot_id,
+            "bot_self_id": report_bot_self_id or "",
+            "success": 0,
+            "failed": 0,
+            "push_message": [],
+        }
+    elif report_bot_self_id and not group_msgs[gid].get("bot_self_id"):
+        group_msgs[gid]["bot_self_id"] = report_bot_self_id
+
+
 async def single_task(
     bot_id: str,
     uid: str,
@@ -294,6 +313,7 @@ async def single_task(
     private_msgs: Dict,
     group_msgs: Dict,
     all_msgs: Dict,
+    report_bot_self_id: Optional[str] = None,
 ):
     im = await do_single_task(uid, ck)
     if isinstance(im, dict):
@@ -333,13 +353,7 @@ async def single_task(
             all_msgs["success"] += 1
     else:
         # 向群消息推送列表添加这个群
-        if gid not in group_msgs:
-            group_msgs[gid] = {
-                "bot_id": bot_id,
-                "success": 0,
-                "failed": 0,
-                "push_message": [],
-            }
+        _ensure_group_entry(group_msgs, gid, bot_id, report_bot_self_id)
 
         if "失败" in im:
             all_msgs["failed"] += 1
@@ -365,6 +379,7 @@ async def single_daily_sign(
     private_msgs: Dict,
     group_msgs: Dict,
     all_msgs: Dict,
+    report_bot_self_id: Optional[str] = None,
 ):
     im = await sign_in(uid, ck)
     is_new = "已签到" not in im
@@ -386,13 +401,7 @@ async def single_daily_sign(
             all_msgs["success"] += 1
     elif is_new:
         # 向群消息推送列表添加这个群
-        if gid not in group_msgs:
-            group_msgs[gid] = {
-                "bot_id": bot_id,
-                "success": 0,
-                "failed": 0,
-                "push_message": [],
-            }
+        _ensure_group_entry(group_msgs, gid, bot_id, report_bot_self_id)
         if "失败" in im:
             all_msgs["failed"] += 1
             group_msgs[gid]["failed"] += 1
@@ -417,6 +426,7 @@ async def single_pgr_daily_sign(
     private_msgs: Dict,
     group_msgs: Dict,
     all_msgs: Dict,
+    report_bot_self_id: Optional[str] = None,
 ):
     """战双游戏签到（用于自动签到任务）"""
     im = await pgr_sign_in(uid, ck)
@@ -441,13 +451,7 @@ async def single_pgr_daily_sign(
             all_msgs["success"] += 1
     elif is_new:
         # 向群消息推送列表添加这个群
-        if gid not in group_msgs:
-            group_msgs[gid] = {
-                "bot_id": bot_id,
-                "success": 0,
-                "failed": 0,
-                "push_message": [],
-            }
+        _ensure_group_entry(group_msgs, gid, bot_id, report_bot_self_id)
         if "失败" in im:
             all_msgs["failed"] += 1
             group_msgs[gid]["failed"] += 1

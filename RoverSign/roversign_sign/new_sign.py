@@ -6,6 +6,7 @@ from gsuid_core.bot import Bot
 from gsuid_core.logger import logger
 from gsuid_core.models import Event
 from gsuid_core.segment import MessageSegment
+from gsuid_core.subscribe import gs_subscribe
 from gsuid_core.utils.boardcast.models import BoardCastMsg, BoardCastMsgDict
 
 from ..roversign_config.roversign_config import RoverSignConfig
@@ -348,6 +349,53 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
     return "\n".join(msg_list) if msg_list else WAVES_CODE_101_MSG
 
 
+# 群/频道类订阅：都按"群发"处理，与旧广播行为(频道也走 group 推送)保持一致
+_GROUP_LIKE_TYPES = ("group", "channel", "sub_channel")
+
+
+def _resolve_report_gid(user: WavesUser, sub_index: Dict):
+    """推送去向完全以「开启自动签到时创建的订阅记录」为准。
+
+    返回 (gid, bot_self_id):
+      群/频道订阅 -> (group_id, bot_self_id)  走对应群/频道推送
+      私聊订阅   -> ("on", None)             走私聊推送
+      无订阅     -> ("off", None)            照常签到，但不推送
+    """
+    sub = sub_index.get((user.user_id, user.bot_id))
+    if not sub:
+        return "off", None
+    user_type, group_id, bot_self_id = sub
+    if group_id and user_type in _GROUP_LIKE_TYPES:
+        return group_id, (bot_self_id or None)
+    if user_type == "direct":
+        return "on", None
+    return "off", None
+
+
+async def _load_sign_subscribe_index() -> Dict:
+    """预载 SIGN_WAVES 订阅记录：(user_id, bot_id) -> (user_type, group_id, bot_self_id)。
+
+    同一 (user_id, bot_id) 可能有多条(不同 WS 连接)；群/频道订阅优先于私聊，
+    避免残留的私聊订阅盖掉群订阅导致本该群发的又走私聊。
+    """
+    sub_index: Dict = {}
+    try:
+        subs = await gs_subscribe.get_subscribe(BoardcastTypeEnum.SIGN_WAVES)
+        for sub in subs or []:
+            key = (sub.user_id, sub.bot_id)
+            prev = sub_index.get(key)
+            if (
+                prev is not None
+                and prev[0] in _GROUP_LIKE_TYPES
+                and sub.user_type not in _GROUP_LIKE_TYPES
+            ):
+                continue
+            sub_index[key] = (sub.user_type, sub.group_id, sub.bot_self_id)
+    except Exception as e:
+        logger.warning(f"[库洛签到·推送] 预载签到订阅失败: {e}")
+    return sub_index
+
+
 async def rover_auto_sign_task():
 
     need_user_list: List[WavesUser] = []
@@ -453,6 +501,9 @@ async def rover_auto_sign_task():
             if is_need:
                 need_user_list.append(user)
 
+    # 推送去向以订阅记录为准，预载一次
+    sub_index = await _load_sign_subscribe_index()
+
     private_waves_sign_msgs = {}
     group_waves_sign_msgs = {}
     all_waves_sign_msgs = {"failed": 0, "success": 0}
@@ -475,6 +526,9 @@ async def rover_auto_sign_task():
             return
 
         user_game_id = user.game_id
+
+        # 推送去向以开启时创建的订阅记录为准（群订阅→群发/私聊订阅→私聊/无订阅→不推）
+        report_gid, report_bot_self = _resolve_report_gid(user, sub_index)
 
         login_res = await rover_api.login_log(user.uid, user.cookie, game_id=user_game_id)
         if not login_res.success:
@@ -504,12 +558,13 @@ async def rover_auto_sign_task():
             await single_pgr_daily_sign(
                 user.bot_id,
                 user.uid,
-                user.sign_switch,
+                report_gid,
                 user.user_id,
                 user.cookie,
                 private_pgr_sign_msgs,
                 group_pgr_sign_msgs,
                 all_pgr_sign_msgs,
+                report_bot_self,
             )
 
             await asyncio.sleep(random.random() * 2)
@@ -521,12 +576,13 @@ async def rover_auto_sign_task():
             await single_daily_sign(
                 user.bot_id,
                 user.uid,
-                user.sign_switch,
+                report_gid,
                 user.user_id,
                 user.cookie,
                 private_waves_sign_msgs,
                 group_waves_sign_msgs,
                 all_waves_sign_msgs,
+                report_bot_self,
             )
 
             await asyncio.sleep(random.random() * 2)
@@ -545,12 +601,13 @@ async def rover_auto_sign_task():
                 await single_task(
                     user.bot_id,
                     user.uid,
-                    user.bbs_sign_switch,
+                    report_gid,
                     user.user_id,
                     user.cookie,
                     private_bbs_msgs,
                     group_bbs_msgs,
                     all_bbs_msgs,
+                    report_bot_self,
                 )
 
             await asyncio.sleep(random.randint(2, 4))
@@ -600,6 +657,10 @@ async def rover_auto_sign_task():
             combined_group_sign_msgs[gid]["success"] += data["success"]
             combined_group_sign_msgs[gid]["failed"] += data["failed"]
             combined_group_sign_msgs[gid]["push_message"].extend(data["push_message"])
+            if not combined_group_sign_msgs[gid].get("bot_self_id") and data.get(
+                "bot_self_id"
+            ):
+                combined_group_sign_msgs[gid]["bot_self_id"] = data["bot_self_id"]
         else:
             combined_group_sign_msgs[gid] = data.copy()
 
@@ -683,9 +744,11 @@ async def to_board_cast_msg(
             messages.extend(group_msgs[gid]["push_message"])
 
         # bot_id 是平台 ID；bot_self_id 是机器人自身账号，二者不能混用。
-        # 优先读取近期记录的机器人自身账号，兜底兼容旧订阅数据。
+        # 优先用订阅记录里带过来的 bot_self_id，其次近期记录，兜底兼容旧订阅数据。
         from ..utils.database.rover_subscribe import RoverSubscribe
-        bot_self_id = await RoverSubscribe.get_group_bot(gid)
+        bot_self_id = group_msgs[gid].get("bot_self_id") or ""
+        if not bot_self_id:
+            bot_self_id = await RoverSubscribe.get_group_bot(gid)
         if not bot_self_id:
             bot_self_id = await WavesSubscribeReader.get_group_bot(gid)
         if not bot_self_id:
